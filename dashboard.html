@@ -51,7 +51,6 @@
     /* RIGHT: Clock + big date */
     .clock-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
     .dow { font-size: 32px; font-weight: 800; }
-    .ampm { font-size: 18px; color: var(--muted); }
     #clock { font-size: var(--clock-size); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
     #date { font-size: 28px; color: var(--muted); }
 
@@ -83,8 +82,12 @@
     .chart .label { font-size: 12px; fill: var(--muted); }
 
     .row-forecast { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
-    .f { background:#1b2030; border-radius:12px; padding:8px; text-align:center; font-size:12px; }
-    .f .tm { color: var(--muted); }
+    .f { background:#1b2030; border-radius:12px; padding:8px; text-align:center; font-size:12px; display:flex; flex-direction:column; gap:4px; align-items:center; }
+    .f .tm { color: var(--muted); font-weight:600; }
+    .f .wx-icon { font-size:24px; line-height:1.1; }
+    .f .temp { font-size:16px; font-weight:700; }
+    .f .desc { color: var(--muted); min-height:16px; }
+    .f .pop { font-size:11px; color: var(--muted); }
 
     .weather-secondary { display:flex; gap:12px; flex:0 0 auto; min-height:0; }
     .radar-pane, .precipogram-pane { background:#1a1f2a; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:12px; min-height:0; }
@@ -222,7 +225,6 @@ await ensureInitialLocation();
 /******** CLOCK ********/
 const WEEKDAYS_JA_FULL = ["日曜日","月曜日","火曜日","水曜日","木曜日","金曜日","土曜日"];
 const dowEl = document.getElementById('dow');
-const ampmEl = document.getElementById('ampm');
 const clockEl = document.getElementById('clock');
 const dateEl  = document.getElementById('date');
 const pad = (n) => String(n).padStart(2,'0');
@@ -231,7 +233,6 @@ function updateClock(){
   const d = new Date();
   const h = d.getHours();
   dowEl.textContent = WEEKDAYS_JA_FULL[d.getDay()];
-  ampmEl.textContent = h < 12 ? '午前' : '午後';
   clockEl.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   dateEl.textContent = `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
 }
@@ -387,9 +388,45 @@ const WEATHER_CODE_MAP = {
   99: '雷雨 (大雹)'
 };
 
+const WEATHER_ICON_MAP = {
+  0: '☀️',
+  1: '🌤️',
+  2: '🌤️',
+  3: '☁️',
+  45: '🌫️',
+  48: '🌫️',
+  51: '🌦️',
+  53: '🌦️',
+  55: '🌦️',
+  56: '🌧️',
+  57: '🌧️',
+  61: '🌧️',
+  63: '🌧️',
+  65: '🌧️',
+  66: '🌨️',
+  67: '🌨️',
+  71: '🌨️',
+  73: '🌨️',
+  75: '🌨️',
+  77: '🌨️',
+  80: '🌦️',
+  81: '🌧️',
+  82: '🌧️',
+  85: '🌨️',
+  86: '🌨️',
+  95: '⛈️',
+  96: '⛈️',
+  99: '⛈️'
+};
+
 function describeWeatherCode(code){
   if(code == null) return '';
   return WEATHER_CODE_MAP[code] || `コード ${code}`;
+}
+
+function getWeatherIcon(code){
+  if(code == null) return '';
+  return WEATHER_ICON_MAP[code] || '';
 }
 
 function parseHourlyEntries(meteo){
@@ -497,6 +534,7 @@ function renderWeatherFromMeteo({ meteo, nowDate, nowUnix, futureWindow, histori
     .map(entry => ({
       label: `${pad(entry.time.getHours())}:00`,
       temp: entry.temp,
+      icon: getWeatherIcon(entry.weathercode),
       description: describeWeatherCode(entry.weathercode),
       pop: entry.pop == null ? null : entry.pop / 100
     }));
@@ -599,8 +637,10 @@ function renderRowForecast(items){
     return;
   }
   rowForecast.innerHTML = items.map(item => {
-    const popText = typeof item.pop === 'number' ? `<div>${Math.round(item.pop * 100)}% 雨確率</div>` : '';
-    return `<div class="f"><div class="tm">${item.label}</div><div>${Math.round(item.temp)}°C</div><div>${item.description || ''}</div>${popText}</div>`;
+    const popText = typeof item.pop === 'number' ? `${Math.round(item.pop * 100)}% 雨確率` : '';
+    const popMarkup = popText ? `<div class="pop">${popText}</div>` : '';
+    const iconMarkup = item.icon ? `<div class="wx-icon" aria-hidden="true">${item.icon}</div>` : '';
+    return `<div class="f"><div class="tm">${item.label}</div>${iconMarkup}<div class="temp">${Math.round(item.temp)}°C</div><div class="desc">${item.description || ''}</div>${popMarkup}</div>`;
   }).join('');
 }
 
