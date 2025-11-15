@@ -407,6 +407,106 @@ body {
   align-items: center;
 }
 
+@media (max-width: 1280px) and (orientation: landscape) {
+  :root {
+    --grid-gap: 12px;
+    --radius: 14px;
+    --clock-size: clamp(48px, 8.5vw, 96px);
+  }
+  body {
+    padding: 12px;
+    box-sizing: border-box;
+    overflow: auto;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "weather clock"
+      "weather calendar";
+    gap: var(--grid-gap);
+    padding: 12px;
+    align-content: stretch;
+    width: min(1200px, 100%);
+    margin: 0 auto;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .card {
+    padding: 12px;
+    gap: 10px;
+  }
+  .title {
+    font-size: 12px;
+  }
+  .weather-panel {
+    gap: 8px;
+  }
+  .weather-head {
+    gap: 10px;
+  }
+  .weather-meta {
+    font-size: 11px;
+  }
+  .current-temp {
+    font-size: 30px;
+  }
+  .weather-secondary {
+    gap: 8px;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+  .weather-secondary > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .chart,
+  .radar-pane,
+  .precipogram-pane {
+    height: clamp(150px, 22vh, 210px);
+  }
+  .row-forecast {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .f {
+    padding: 4px;
+    font-size: 11px;
+    min-width: 0;
+  }
+  .f .temp {
+    font-size: 13px;
+  }
+  .f .wx-icon {
+    font-size: 18px;
+  }
+  .clock-wrap {
+    gap: 6px;
+    padding: 6px 0;
+  }
+  #clock {
+    letter-spacing: .02em;
+    line-height: 1.1;
+    width: 100%;
+  }
+  .dow {
+    font-size: 30px;
+  }
+  #date {
+    font-size: 24px;
+  }
+  .cal3 {
+    gap: 8px;
+  }
+  .mcal {
+    padding: 8px;
+  }
+  .d {
+    font-size: 12px;
+    padding: 4px 0;
+  }
+}
+
 @media (max-aspect-ratio: 10 / 16) {
   .layout {
     grid-template-columns: 1fr;
