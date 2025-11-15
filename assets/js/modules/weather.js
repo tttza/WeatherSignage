@@ -2,6 +2,10 @@ import { formatDateTime, pad } from "../utils/datetime.js";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 const PRECIP_WINDOW_MS = 3 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SYNODIC_MONTH_DAYS = 29.53058867;
+const SYNODIC_MONTH_MS = SYNODIC_MONTH_DAYS * DAY_MS;
+const NEW_MOON_REFERENCE_MS = Date.UTC(2000, 0, 6, 18, 14);
 
 const WEATHER_CODE_MAP = {
   0: "快晴",
@@ -65,6 +69,20 @@ const WEATHER_ICON_MAP = {
   99: "⛈️",
 };
 
+const CLEAR_WEATHER_CODES = new Set([0, 1, 2]);
+
+const MOON_PHASE_SEGMENTS = [
+  { threshold: 0.0625, icon: "🌑", label: "新月" },
+  { threshold: 0.1875, icon: "🌒", label: "三日月" },
+  { threshold: 0.3125, icon: "🌓", label: "上弦の月" },
+  { threshold: 0.4375, icon: "🌔", label: "十三夜" },
+  { threshold: 0.5625, icon: "🌕", label: "満月" },
+  { threshold: 0.6875, icon: "🌖", label: "十六夜" },
+  { threshold: 0.8125, icon: "🌗", label: "下弦の月" },
+  { threshold: 0.9375, icon: "🌘", label: "有明月" },
+  { threshold: 1, icon: "🌑", label: "新月" },
+];
+
 const describeWeatherCode = (code) => {
   if (code == null) {
     return "";
@@ -85,6 +103,7 @@ const parseHourlyEntries = (meteo) => {
   const precip = Array.isArray(meteo?.hourly?.precipitation) ? meteo.hourly.precipitation : [];
   const pop = Array.isArray(meteo?.hourly?.precipitation_probability) ? meteo.hourly.precipitation_probability : [];
   const codes = Array.isArray(meteo?.hourly?.weathercode) ? meteo.hourly.weathercode : [];
+  const dayFlags = Array.isArray(meteo?.hourly?.is_day) ? meteo.hourly.is_day : [];
   const entries = [];
 
   for (let i = 0; i < times.length; i += 1) {
@@ -97,15 +116,61 @@ const parseHourlyEntries = (meteo) => {
     if (typeof temp !== "number") {
       continue;
     }
+    const isDayFlag = dayFlags[i];
+    let isDay = null;
+    if (isDayFlag === 1 || isDayFlag === 0) {
+      isDay = Boolean(isDayFlag);
+    }
     entries.push({
       time: date,
+      dateKey: typeof timeStr === "string" ? timeStr.slice(0, 10) : null,
       temp,
       precipitation: typeof precip[i] === "number" ? precip[i] : 0,
       pop: typeof pop[i] === "number" ? pop[i] : null,
       weathercode: typeof codes[i] === "number" ? codes[i] : null,
+      isDay,
     });
   }
   return entries.sort((a, b) => a.time.getTime() - b.time.getTime());
+};
+
+const normalizeMoonPhase = (value) => {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  const wrapped = value % 1;
+  return wrapped < 0 ? wrapped + 1 : wrapped;
+};
+
+const getMoonPhaseInfo = (value) => {
+  const normalized = normalizeMoonPhase(value);
+  if (normalized == null) {
+    return null;
+  }
+  for (const segment of MOON_PHASE_SEGMENTS) {
+    if (normalized < segment.threshold) {
+      return segment;
+    }
+  }
+  return MOON_PHASE_SEGMENTS[MOON_PHASE_SEGMENTS.length - 1];
+};
+
+const describeMoonPhase = (value) => getMoonPhaseInfo(value)?.label || "";
+const getMoonIconFromPhase = (value) => getMoonPhaseInfo(value)?.icon || "🌙";
+
+const estimateMoonPhaseFraction = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const elapsed = date.getTime() - NEW_MOON_REFERENCE_MS;
+  if (!Number.isFinite(elapsed)) {
+    return null;
+  }
+  const normalized = (elapsed % SYNODIC_MONTH_MS) / SYNODIC_MONTH_MS;
+  if (!Number.isFinite(normalized)) {
+    return null;
+  }
+  return normalized < 0 ? normalized + 1 : normalized;
 };
 
 const splitHourly = (entries, nowDate, config) => {
@@ -117,6 +182,73 @@ const splitHourly = (entries, nowDate, config) => {
   const past = entries.filter((e) => e.time.getTime() < nowMs && nowMs - e.time.getTime() <= historyMs);
   const future = entries.filter((e) => e.time.getTime() >= nowMs && e.time.getTime() - nowMs <= horizonMs);
   return { past, future };
+};
+
+const buildMoonPhaseLookup = () => new Map();
+
+const getEntryDateKey = (entry) => {
+  if (!entry) {
+    return null;
+  }
+  if (entry.dateKey) {
+    return entry.dateKey;
+  }
+  if (entry.time instanceof Date) {
+    return entry.time.toISOString().slice(0, 10);
+  }
+  return null;
+};
+
+const getMoonPhaseForEntry = (entry, lookup) => {
+  if (!lookup || !(lookup instanceof Map)) {
+    return null;
+  }
+  const key = getEntryDateKey(entry);
+  if (!key) {
+    return null;
+  }
+  if (!lookup.has(key)) {
+    const date = entry.time instanceof Date ? entry.time : new Date(entry.time);
+    const phase = estimateMoonPhaseFraction(date);
+    lookup.set(key, Number.isFinite(phase) ? phase : null);
+  }
+  const phase = lookup.get(key);
+  return Number.isFinite(phase) ? phase : null;
+};
+
+const isNightTime = (entry) => {
+  if (!entry) {
+    return false;
+  }
+  if (typeof entry.isDay === "boolean") {
+    return !entry.isDay;
+  }
+  if (entry.isDay === 0) {
+    return true;
+  }
+  if (entry.isDay === 1) {
+    return false;
+  }
+  if (entry.time instanceof Date) {
+    const hour = entry.time.getHours();
+    return hour < 6 || hour >= 18;
+  }
+  return false;
+};
+
+const selectWeatherGlyph = (entry, moonPhaseLookup) => {
+  const isClearNight = CLEAR_WEATHER_CODES.has(entry?.weathercode) && isNightTime(entry);
+  if (!isClearNight) {
+    return { icon: getWeatherIcon(entry?.weathercode), moonLabel: null, iconClass: "" };
+  }
+  const phaseValue = getMoonPhaseForEntry(entry, moonPhaseLookup);
+  const hasPhase = Number.isFinite(phaseValue);
+  const showCloudOverlay = entry?.weathercode === 1 || entry?.weathercode === 2;
+  return {
+    icon: hasPhase ? getMoonIconFromPhase(phaseValue) : "🌙",
+    moonLabel: hasPhase ? describeMoonPhase(phaseValue) : null,
+    iconClass: showCloudOverlay ? "wx-icon--moon-cloud" : "",
+  };
 };
 
 const buildPastSeries = (historicalPoints, nowUnix, currentTemp, nowDate, forecastTimes, config) => {
@@ -460,7 +592,8 @@ const renderRowForecast = (rowForecast, items) => {
     .map((item) => {
       const popText = typeof item.pop === "number" ? `${Math.round(item.pop * 100)}% 雨確率` : "";
       const popMarkup = popText ? `<div class="pop">${popText}</div>` : "";
-      const iconMarkup = item.icon ? `<div class="wx-icon" aria-hidden="true">${item.icon}</div>` : "";
+      const iconClassName = ["wx-icon", item.iconClass].filter(Boolean).join(" ");
+      const iconMarkup = item.icon ? `<div class="${iconClassName}" aria-hidden="true">${item.icon}</div>` : "";
       return `
         <div class="f">
           <div class="tm">${item.label}</div>
@@ -517,7 +650,7 @@ export const initWeather = (config) => {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   };
 
-  const renderWeatherFromMeteo = ({ meteo, nowDate, nowUnix, futureWindow, historicalPoints }) => {
+  const renderWeatherFromMeteo = ({ meteo, nowDate, nowUnix, futureWindow, historicalPoints, moonPhaseLookup }) => {
     const step = Math.max(1, getSetting("historyStepHours", 3));
     const currentTemp =
       typeof meteo?.current_weather?.temperature === "number"
@@ -557,13 +690,17 @@ export const initWeather = (config) => {
     const rowItems = futureWindow
       .filter((_, idx) => idx % 3 === 0)
       .slice(0, 8)
-      .map((entry) => ({
-        label: `${pad(entry.time.getHours())}:00`,
-        temp: entry.temp,
-        icon: getWeatherIcon(entry.weathercode),
-        description: describeWeatherCode(entry.weathercode),
-        pop: entry.pop == null ? null : entry.pop / 100,
-      }));
+      .map((entry) => {
+        const glyph = selectWeatherGlyph(entry, moonPhaseLookup);
+        return {
+          label: `${pad(entry.time.getHours())}:00`,
+          temp: entry.temp,
+          icon: glyph.icon,
+          iconClass: glyph.iconClass,
+          description: describeWeatherCode(entry.weathercode),
+          pop: entry.pop == null ? null : entry.pop / 100,
+        };
+      });
     renderRowForecast(rowForecast, rowItems);
   };
 
@@ -577,7 +714,7 @@ export const initWeather = (config) => {
       latitude: String(config?.lat ?? 35.6762),
       longitude: String(config?.lon ?? 139.6503),
       timezone: config?.timezone || "auto",
-      hourly: "temperature_2m,precipitation,precipitation_probability,weathercode",
+      hourly: "temperature_2m,precipitation,precipitation_probability,weathercode,is_day",
       past_days: "1",
       forecast_days: "2",
       current_weather: "true",
@@ -601,7 +738,8 @@ export const initWeather = (config) => {
             .filter((e) => e.time.getTime() >= nowDate.getTime())
             .slice(0, Math.max(1, getSetting("chartHours", 24)));
 
-      renderWeatherFromMeteo({ meteo, nowDate, nowUnix, futureWindow, historicalPoints });
+      const moonPhaseLookup = buildMoonPhaseLookup();
+      renderWeatherFromMeteo({ meteo, nowDate, nowUnix, futureWindow, historicalPoints, moonPhaseLookup });
       renderPrecipFromMeteo(entries, nowDate);
       setLastUpdated(Date.now());
     } catch (error) {
