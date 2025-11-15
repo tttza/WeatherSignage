@@ -43,7 +43,10 @@
 
     .card { background: var(--panel); border-radius: var(--radius); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.35); min-height: 0; }
     .title { font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--muted); }
-    #lastUpdated { position: fixed; top: 12px; right: 16px; background: rgba(22,26,34,.9); color: var(--muted); font-size: 12px; padding: 4px 12px; border-radius: 999px; z-index: 100; backdrop-filter: blur(4px); }
+    .weather-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+    .weather-meta { display:flex; flex-direction:column; gap:4px; align-items:flex-end; font-size:12px; color:var(--muted); }
+    .current-temp { font-size:34px; font-weight:700; line-height:1; color:var(--fg); }
+    .last-updated { font-size:12px; color:var(--muted); white-space:nowrap; }
 
     /* RIGHT: Clock + big date */
     .clock-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
@@ -125,7 +128,6 @@
   </style>
 </head>
 <body>
-  <div id="lastUpdated">最終更新: --</div>
   <div class="layout">
     <!-- Panel: Weather -->
     <section class="card panel panel--weather" data-panel-name="weather" data-panel-src="panels/weather.html"></section>
@@ -324,7 +326,8 @@ requestCalendarRender();
 const chartSvg = document.getElementById('tempChart');
 const rowForecast = document.getElementById('rowForecast');
 const precipogramSvg = document.getElementById('precipogram');
-const lastUpdatedEl = document.getElementById('lastUpdated');
+const lastUpdatedEl = document.getElementById('weatherLastUpdated');
+const currentTempEl = document.getElementById('currentTempDisplay');
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 const PRECIP_WINDOW_MS = 3 * 60 * 60 * 1000;
 function formatDateTime(date){
@@ -332,12 +335,25 @@ function formatDateTime(date){
 }
 function setLastUpdated(tsMs){
   if(!lastUpdatedEl) return;
+  if(!Number.isFinite(tsMs)){
+    lastUpdatedEl.textContent = '最終更新: --';
+    return;
+  }
   const date = new Date(tsMs);
   if(Number.isNaN(date.getTime())){
     lastUpdatedEl.textContent = '最終更新: --';
     return;
   }
   lastUpdatedEl.textContent = `最終更新: ${formatDateTime(date)}`;
+}
+
+function setCurrentTemp(temp){
+  if(!currentTempEl) return;
+  if(typeof temp === 'number' && Number.isFinite(temp)){
+    currentTempEl.textContent = `${Math.round(temp)}°C`;
+  }else{
+    currentTempEl.textContent = '--°C';
+  }
 }
 
 const WEATHER_CODE_MAP = {
@@ -450,6 +466,8 @@ async function fetchWeather(){
     chartSvg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="label">${err.message || 'Failed to fetch weather data'}</text>`;
     rowForecast.innerHTML = '';
     drawPrecipogram([]);
+      setCurrentTemp(null);
+      setLastUpdated(Number.NaN);
   }
 }
 
@@ -458,6 +476,7 @@ function renderWeatherFromMeteo({ meteo, nowDate, nowUnix, futureWindow, histori
   const currentTemp = typeof meteo?.current_weather?.temperature === 'number' ? meteo.current_weather.temperature : (futureWindow[0]?.temp ?? null);
   const currentCode = typeof meteo?.current_weather?.weathercode === 'number' ? meteo.current_weather.weathercode : futureWindow[0]?.weathercode ?? null;
 
+    setCurrentTemp(currentTemp);
   const futureSeriesSeed = [];
   if(currentTemp != null){
     futureSeriesSeed.push({ t: nowDate, label: `${pad(nowDate.getHours())}:00`, temp: currentTemp, isCurrent: true, weathercode: currentCode });
