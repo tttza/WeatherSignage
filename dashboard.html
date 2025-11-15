@@ -23,21 +23,21 @@
     body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif; overflow: hidden; }
 
     .layout {
-      height: 100%;
+      min-height: 100%;
       display: grid;
       grid-template-columns: 1.25fr 1fr; /* L wider like the sample */
-      grid-template-rows: 1fr 1fr;
+      grid-template-rows: auto auto;
       grid-template-areas:
         "weather clock"
-        "radar   calendar";
+        "weather calendar";
       gap: var(--grid-gap);
       padding: var(--grid-gap);
       box-sizing: border-box;
+      align-content: flex-start;
     }
 
     .panel { min-height: 0; }
     .panel--weather { grid-area: weather; }
-    .panel--radar { grid-area: radar; }
     .panel--clock { grid-area: clock; }
     .panel--calendar { grid-area: calendar; }
 
@@ -65,7 +65,10 @@
     .d.today { background: rgba(62,166,255,.16); outline: 1px solid rgba(62,166,255,.35); }
 
     /* LEFT TOP: Weather chart + row forecast */
-    .chart { position: relative; width: 100%; height: 56%; min-height: 180px; background: #1a1f2a; border-radius: 12px; padding: 10px; box-sizing: border-box; }
+    .weather-panel { display:flex; flex-direction:column; gap:12px; height:100%; }
+    .weather-head { flex:0 0 auto; }
+    .weather-primary { display:flex; flex-direction:column; gap:8px; flex:0 0 auto; }
+    .chart { position: relative; width: 100%; height: clamp(240px, 32vh, 320px); min-height: 220px; background: #1a1f2a; border-radius: 12px; padding: 10px; box-sizing: border-box; }
     .chart svg { width: 100%; height: 100%; display: block; }
     .chart .axis { stroke: rgba(255,255,255,.15); stroke-width: 1; }
     .chart .axis-now { stroke: rgba(255,255,255,.35); stroke-width: 1; stroke-dasharray: 4 4; }
@@ -76,9 +79,19 @@
     .chart .dot-past { fill: #ffb347; }
     .chart .label { font-size: 12px; fill: var(--muted); }
 
-    .row-forecast { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-top: 8px; }
+    .row-forecast { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
     .f { background:#1b2030; border-radius:12px; padding:8px; text-align:center; font-size:12px; }
     .f .tm { color: var(--muted); }
+
+    .weather-secondary { display:flex; gap:12px; flex:0 0 auto; min-height:0; }
+    .radar-pane, .precipogram-pane { background:#1a1f2a; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:12px; min-height:0; }
+    .radar-pane, .precipogram-pane { height: clamp(220px, 38vh, 360px); }
+    .map-wrap, .precipogram-body { flex:1; min-height:0; }
+    .radar-pane { flex:1; }
+    .precipogram-pane { flex:1; }
+    #precipogram { width:100%; height:100%; display:block; }
+    .precipogram-head { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted); }
+    .precip-interval { font-size:11px; color:var(--fg); background:rgba(255,255,255,.08); padding:2px 10px; border-radius:999px; }
 
     /* LEFT BOTTOM: Radar */
     .map-wrap { flex: 1; min-height: 0; }
@@ -92,19 +105,23 @@
     @media (max-aspect-ratio: 10/16) {
       .layout {
         grid-template-columns: 1fr;
-        grid-template-rows: repeat(4, auto);
+        grid-template-rows: repeat(3, auto);
         grid-template-areas:
           "weather"
-          "radar"
           "clock"
           "calendar";
         overflow:auto;
       }
       .clock-wrap{align-items:flex-start;}
+      .weather-secondary{flex-direction:column;}
     }
-    .bar { fill: #69b3ff; }
-    .bar-label { font-size: 12px; fill: var(--muted); }
-    .bar-axis { stroke: rgba(255,255,255,.15); stroke-width:1; }
+
+    .precip-bar { fill: #5fb0ff; }
+    .precip-bar.past { fill: rgba(95,176,255,.85); }
+    .precip-bar.future { fill: rgba(89,211,177,.9); }
+    .precip-axis { stroke: rgba(255,255,255,.15); stroke-width:1; }
+    .precip-label { font-size: 11px; fill: var(--muted); }
+    .precip-now-line { stroke: rgba(255,255,255,.5); stroke-width:1; stroke-dasharray:4 4; }
   </style>
 </head>
 <body>
@@ -112,9 +129,6 @@
   <div class="layout">
     <!-- Panel: Weather -->
     <section class="card panel panel--weather" data-panel-name="weather" data-panel-src="panels/weather.html"></section>
-
-    <!-- Panel: Radar -->
-    <section class="card panel panel--radar" data-panel-name="radar" data-panel-src="panels/radar.html"></section>
 
     <!-- Panel: Clock -->
     <section class="card panel panel--clock" data-panel-name="clock" data-panel-src="panels/clock.html"></section>
@@ -228,6 +242,7 @@ const calNextBtn = document.getElementById('calNext');
 const calTodayBtn = document.getElementById('calToday');
 let holidayCache = {}; // per year
 let calOffset = 0;
+let lastCalendarTodayKey = ymd(new Date());
 function ymd(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 async function loadHolidays(year){
   if(holidayCache[year]) return holidayCache[year];
@@ -278,25 +293,40 @@ function getCalendarBaseMonth(){
 
 async function updateCalendar(){
   await renderTwoMonths(getCalendarBaseMonth());
+  lastCalendarTodayKey = ymd(new Date());
+}
+
+function requestCalendarRender(){
+  return updateCalendar().catch((err) => console.error('Calendar refresh failed:', err));
 }
 
 if(calPrevBtn){
-  calPrevBtn.addEventListener('click', ()=>{ calOffset -= 1; updateCalendar(); });
+  calPrevBtn.addEventListener('click', ()=>{ calOffset -= 1; requestCalendarRender(); });
 }
 if(calNextBtn){
-  calNextBtn.addEventListener('click', ()=>{ calOffset += 1; updateCalendar(); });
+  calNextBtn.addEventListener('click', ()=>{ calOffset += 1; requestCalendarRender(); });
 }
 if(calTodayBtn){
-  calTodayBtn.addEventListener('click', ()=>{ calOffset = 0; updateCalendar(); });
+  calTodayBtn.addEventListener('click', ()=>{ calOffset = 0; requestCalendarRender(); });
 }
 
-updateCalendar();
+requestCalendarRender();
+(function scheduleCalendarAutoRefresh(){
+  setInterval(() => {
+    const todayKey = ymd(new Date());
+    if(todayKey !== lastCalendarTodayKey){
+      requestCalendarRender();
+    }
+  }, 60 * 1000);
+})();
 
 /******** WEATHER (Open-Meteo) ********/
 const chartSvg = document.getElementById('tempChart');
 const rowForecast = document.getElementById('rowForecast');
-const precipSvg = document.getElementById('precipBar');
+const precipogramSvg = document.getElementById('precipogram');
 const lastUpdatedEl = document.getElementById('lastUpdated');
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+const PRECIP_WINDOW_MS = 3 * 60 * 60 * 1000;
 function formatDateTime(date){
   return `${date.getFullYear()}/${pad(date.getMonth()+1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
@@ -413,13 +443,13 @@ async function fetchWeather(){
     });
     renderPrecipFromMeteo(entries, nowDate);
 
-    const updatedTimestamp = meteo?.current_weather?.time ? new Date(meteo.current_weather.time).getTime() : Date.now();
-    setLastUpdated(updatedTimestamp);
+    const fetchCompletedAt = Date.now();
+    setLastUpdated(fetchCompletedAt);
   }catch(err){
     console.error('Weather fetch failed:', err);
     chartSvg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="label">${err.message || 'Failed to fetch weather data'}</text>`;
     rowForecast.innerHTML = '';
-    drawPrecipBars([]);
+    drawPrecipogram([]);
   }
 }
 
@@ -512,13 +542,35 @@ function buildPastSeries(historicalPoints, nowUnix, currentTemp, nowDate, foreca
 }
 
 function renderPrecipFromMeteo(entries, nowDate){
-  const future = entries.filter(e => e.time.getTime() >= nowDate.getTime()).slice(0, 12);
-  const data = future.map(entry => ({
-    label: `${pad(entry.time.getHours())}:00`,
-    value: entry.precipitation,
-    pop: entry.pop == null ? null : entry.pop / 100
-  }));
-  drawPrecipBars(data);
+  const buckets = buildTenMinuteBuckets(entries, nowDate);
+  drawPrecipogram(buckets, nowDate);
+}
+
+function buildTenMinuteBuckets(entries, nowDate){
+  if(!Array.isArray(entries) || !entries.length) return [];
+  const startMs = nowDate.getTime() - PRECIP_WINDOW_MS;
+  const endMs = nowDate.getTime() + PRECIP_WINDOW_MS;
+  const byHour = new Map();
+  for(const entry of entries){
+    if(!(entry?.time instanceof Date)) continue;
+    const t = new Date(entry.time);
+    t.setMinutes(0,0,0);
+    byHour.set(t.getTime(), Math.max(0, Number(entry.precipitation) || 0));
+  }
+  const buckets = [];
+  for(let ts = startMs; ts < endMs; ts += TEN_MINUTES_MS){
+    const hour = new Date(ts);
+    hour.setMinutes(0,0,0);
+    const hourKey = hour.getTime();
+    const hourlyValue = byHour.has(hourKey) ? byHour.get(hourKey) : 0;
+    const amount = (hourlyValue / 60) * (TEN_MINUTES_MS / (60 * 1000));
+    buckets.push({
+      time: new Date(ts + TEN_MINUTES_MS / 2),
+      value: Math.max(0, amount),
+      isPast: (ts + TEN_MINUTES_MS / 2) < nowDate.getTime()
+    });
+  }
+  return buckets;
 }
 
 function renderRowForecast(items){
@@ -664,35 +716,66 @@ function formatTickLabel(date){
   return `${day} ${hh}:00`;
 }
 
-function drawPrecipBars(data){
-  if(!precipSvg) return;
-  if(!Array.isArray(data) || !data.length){
-    precipSvg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="label">降水データがありません</text>`;
+function drawPrecipogram(buckets, nowDate){
+  if(!precipogramSvg) return;
+  if(!Array.isArray(buckets) || !buckets.length){
+    precipogramSvg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="label">降水データがありません</text>`;
     return;
   }
-  const width = 800;
-  const height = 200;
-  const margin = { top: 16, right: 24, bottom: 40, left: 48 };
+  const width = 520;
+  const height = 280;
+  const margin = { top: 20, right: 24, bottom: 48, left: 56 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
-  const maxValue = Math.max(...data.map(d => d.value), 0.1);
-  const barWidth = innerWidth / data.length;
+  const maxValue = Math.max(...buckets.map(b => b.value), 0.1);
+  const barWidth = innerWidth / buckets.length;
+  const startMs = nowDate.getTime() - PRECIP_WINDOW_MS;
+  const totalRange = PRECIP_WINDOW_MS * 2;
+  const nowRatio = (nowDate.getTime() - startMs) / totalRange;
+  const nowX = margin.left + nowRatio * innerWidth;
+  const axisPrecision = maxValue >= 1 ? 1 : 2;
+  const labelThreshold = Math.max(0.1, maxValue * 0.25);
 
-  precipSvg.innerHTML = `
-    <line class="bar-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
-    <line class="bar-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
-    ${data.map((d, i) => {
-      const x = margin.left + i * barWidth + barWidth * 0.1;
-      const barH = d.value <= 0 ? 0 : (d.value / maxValue) * innerHeight;
+  const yTicks = 4;
+  const yGrid = Array.from({ length: yTicks + 1 }, (_, idx) => {
+    const value = (maxValue / yTicks) * idx;
+    const ratio = value / maxValue;
+    const y = height - margin.bottom - ratio * innerHeight;
+    return { y, value };
+  });
+
+  const timeLabels = buckets
+    .map((bucket, idx) => ({ bucket, idx }))
+    .filter(({ idx }) => idx % 6 === 0 || idx === buckets.length - 1)
+    .map(({ bucket, idx }) => {
+      const x = margin.left + (idx + 0.5) * barWidth;
+      const label = `${pad(bucket.time.getHours())}:${pad(bucket.time.getMinutes())}`;
+      return { x, label };
+    });
+
+  precipogramSvg.innerHTML = `
+    <line class="precip-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
+    <line class="precip-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
+    ${yGrid.map(tick => `
+      <line class="precip-axis" x1="${margin.left}" y1="${tick.y}" x2="${width - margin.right}" y2="${tick.y}" stroke-dasharray="4 4"></line>
+      <text class="precip-label" x="${margin.left - 8}" y="${tick.y + 4}" text-anchor="end">${tick.value.toFixed(axisPrecision)}mm</text>
+    `).join('')}
+    ${buckets.map((bucket, idx) => {
+      const barH = bucket.value <= 0 ? 0 : (bucket.value / maxValue) * innerHeight;
+      const x = margin.left + idx * barWidth + barWidth * 0.05;
+      const w = barWidth * 0.9;
       const y = height - margin.bottom - barH;
-      const popText = typeof d.pop === 'number' ? `<text class="label" x="${x + barWidth * 0.4}" y="${y - 8}" text-anchor="middle">${Math.round(d.pop * 100)}%</text>` : '';
+      const label = bucket.value >= labelThreshold ? `<text class="precip-label" x="${x + w / 2}" y="${y - 6}" text-anchor="middle">${bucket.value.toFixed(axisPrecision)}</text>` : '';
       return `
-        <rect class="bar" x="${x}" y="${y}" width="${barWidth * 0.8}" height="${barH}"></rect>
-        ${barH ? `<text class="label" x="${x + barWidth * 0.4}" y="${y - 20}" text-anchor="middle">${d.value.toFixed(1)}mm</text>` : ''}
-        ${popText}
-        <text class="bar-label" x="${x + barWidth * 0.4}" y="${height - margin.bottom + 20}" text-anchor="middle">${d.label}</text>
+        <rect class="precip-bar ${bucket.isPast ? 'past' : 'future'}" x="${x}" y="${y}" width="${w}" height="${barH}"></rect>
+        ${label}
       `;
     }).join('')}
+    ${timeLabels.map(tick => `
+      <text class="precip-label" x="${tick.x}" y="${height - margin.bottom + 20}" text-anchor="middle">${tick.label}</text>
+    `).join('')}
+    <line class="precip-now-line" x1="${nowX}" y1="${margin.top}" x2="${nowX}" y2="${height - margin.bottom}"></line>
+    <text class="precip-label" x="${nowX + 4}" y="${margin.top + 12}">現在</text>
   `;
 }
 

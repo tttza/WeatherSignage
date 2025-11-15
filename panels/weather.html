@@ -1,6 +1,35 @@
-<div class="title">天気</div>
-<div class="chart"><svg id="tempChart" viewBox="0 0 800 260" preserveAspectRatio="none"></svg></div>
-<div class="row-forecast" id="rowForecast"></div>
-<div class="chart" style="height: 40%; min-height: 120px; margin-top:8px;">
-  <svg id="precipBar" viewBox="0 0 800 200" preserveAspectRatio="none"></svg>
+<div class="weather-panel">
+  <header class="weather-head">
+    <div class="title">天気・雨雲レーダー</div>
+  </header>
+
+  <section class="weather-primary">
+    <div class="chart">
+      <svg id="tempChart" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="row-forecast" id="rowForecast"></div>
+  </section>
+
+  <section class="weather-secondary">
+    <div class="radar-pane">
+      <div class="map-head">
+        <div class="map-controls">
+          <button class="btn" id="btnPrev">◀</button>
+          <button class="btn" id="btnNext">▶</button>
+          <span id="radarTime">Loading...</span>
+        </div>
+      </div>
+      <div class="map-wrap"><div id="map"></div></div>
+    </div>
+
+    <div class="precipogram-pane">
+      <div class="precipogram-head">
+        <span>降水 (過去3h / 未来3h)</span>
+        <span class="precip-interval">10分刻み</span>
+      </div>
+      <div class="precipogram-body">
+        <svg id="precipogram" viewBox="0 0 520 280" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+  </section>
 </div>
