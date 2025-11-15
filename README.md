@@ -1,6 +1,9 @@
 # Dashboard
 
-A lightweight digital signage dashboard that combines a weather panel, a clock, and a three-month calendar in a responsive layout. All assets are plain HTML, CSS, and JavaScript so the site can be hosted easily on GitHub Pages or any static host.
+A lightweight digital signage dashboard that combines a weather panel, a clock, and a three-month calendar in a responsive layout. All assets are plain HTML, CSS, and JavaScript so the site can be hosted easily on GitHub Pages or any static host. Currently only support Japanese.
+
+<img width="1652" height="981" alt="image" src="https://github.com/user-attachments/assets/5e1ddc5f-ab03-493e-ac88-5becf0e38059" />
+
 
 ## Project Structure
 
@@ -40,3 +43,4 @@ Then visit `http://localhost:8000/` in your browser.
 
 All original dashboard source code in this repository is released under the [MIT License](LICENSE).
 This MIT License applies only to the original source code of this app.  
+
