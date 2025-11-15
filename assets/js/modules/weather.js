@@ -590,8 +590,10 @@ const renderRowForecast = (rowForecast, items) => {
   }
   rowForecast.innerHTML = items
     .map((item) => {
-      const popText = typeof item.pop === "number" ? `${Math.round(item.pop * 100)}% 雨確率` : "";
-      const popMarkup = popText ? `<div class="pop">${popText}</div>` : "";
+      const descText = item.description || "";
+      const popText = typeof item.pop === "number" ? `${Math.round(item.pop * 100)}%` : "";
+      const detailText = descText && popText ? `${descText} / ${popText}` : descText || popText;
+      const detailMarkup = detailText ? `<div class="desc">${detailText}</div>` : "";
       const iconClassName = ["wx-icon", item.iconClass].filter(Boolean).join(" ");
       const iconMarkup = item.icon ? `<div class="${iconClassName}" aria-hidden="true">${item.icon}</div>` : "";
       return `
@@ -599,8 +601,7 @@ const renderRowForecast = (rowForecast, items) => {
           <div class="tm">${item.label}</div>
           ${iconMarkup}
           <div class="temp">${Math.round(item.temp)}°C</div>
-          <div class="desc">${item.description || ""}</div>
-          ${popMarkup}
+          ${detailMarkup}
         </div>
       `;
     })
