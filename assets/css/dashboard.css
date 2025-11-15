@@ -334,6 +334,25 @@ body {
   border-radius: 999px;
 }
 
+.data-attribution {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+  line-height: 1.4;
+}
+.data-attribution a {
+  color: inherit;
+  text-decoration: none;
+}
+.data-attribution a:hover,
+.data-attribution a:focus-visible {
+  color: var(--fg);
+  text-decoration: underline;
+}
+.panel--calendar .data-attribution {
+  margin-top: 8px;
+}
+
 .map-wrap {
   flex: 1;
   min-height: 0;
