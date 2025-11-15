@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Signage Sample v2 | JP Clock + 3mo Calendar + Radar + Weather</title>
+  <!-- Leaflet (for radar map) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #0f1115;       /* background */
+      --panel: #161a22;    /* card */
+      --fg: #e6e7eb;       /* text */
+      --muted: #9aa0a6;    /* sub text */
+      --accent: #3ea6ff;   /* accent (Sat) */
+      --danger: #ff6b6b;   /* holidays / Sun */
+      --grid-gap: 16px;
+      --radius: 16px;
+      --clock-size: clamp(56px, 11vw, 112px);
+    }
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif; overflow: hidden; }
+
+    .layout {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1.25fr 1fr; /* L wider like the sample */
+      grid-template-rows: 1fr 1fr;
+      grid-template-areas:
+        "weather clock"
+        "radar   calendar";
+      gap: var(--grid-gap);
+      padding: var(--grid-gap);
+      box-sizing: border-box;
+    }
+
+    .panel { min-height: 0; }
+    .panel--weather { grid-area: weather; }
+    .panel--radar { grid-area: radar; }
+    .panel--clock { grid-area: clock; }
+    .panel--calendar { grid-area: calendar; }
+
+    .card { background: var(--panel); border-radius: var(--radius); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.35); min-height: 0; }
+    .title { font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--muted); }
+    #lastUpdated { position: fixed; top: 12px; right: 16px; background: rgba(22,26,34,.9); color: var(--muted); font-size: 12px; padding: 4px 12px; border-radius: 999px; z-index: 100; backdrop-filter: blur(4px); }
+
+    /* RIGHT: Clock + big date */
+    .clock-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+    .dow { font-size: 32px; font-weight: 800; }
+    .ampm { font-size: 18px; color: var(--muted); }
+    #clock { font-size: var(--clock-size); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
+    #date { font-size: 28px; color: var(--muted); }
+
+    /* RIGHT: 3-month calendar */
+    .cal3 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 8px; width: 100%; }
+    .mcal { background:#1a1f2a; border-radius: 12px; padding: 10px; }
+    .mcal .mh { font-weight: 700; text-align: center; margin-bottom: 6px; }
+    .grid7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .wd { text-align:center; color: var(--muted); font-size: 12px; }
+    .d  { text-align:center; padding: 6px 0; border-radius: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .d.sun { color: var(--danger); }
+    .d.sat { color: var(--accent); }
+    .d.holiday { color: var(--danger); font-weight: 700; }
+    .d.today { background: rgba(62,166,255,.16); outline: 1px solid rgba(62,166,255,.35); }
+
+    /* LEFT TOP: Weather chart + row forecast */
+    .chart { position: relative; width: 100%; height: 56%; min-height: 180px; background: #1a1f2a; border-radius: 12px; padding: 10px; box-sizing: border-box; }
+    .chart svg { width: 100%; height: 100%; display: block; }
+    .chart .axis { stroke: rgba(255,255,255,.15); stroke-width: 1; }
+    .chart .axis-now { stroke: rgba(255,255,255,.35); stroke-width: 1; stroke-dasharray: 4 4; }
+    .chart .line { fill: none; stroke: #7ab8ff; stroke-width: 3; }
+    .chart .line-future { stroke: #7ab8ff; }
+    .chart .line-past { stroke: #ffb347; stroke-width: 2; stroke-dasharray: 6 4; opacity: .9; }
+    .chart .dot { fill: #7ab8ff; }
+    .chart .dot-past { fill: #ffb347; }
+    .chart .label { font-size: 12px; fill: var(--muted); }
+
+    .row-forecast { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-top: 8px; }
+    .f { background:#1b2030; border-radius:12px; padding:8px; text-align:center; font-size:12px; }
+    .f .tm { color: var(--muted); }
+
+    /* LEFT BOTTOM: Radar */
+    .map-wrap { flex: 1; min-height: 0; }
+    #map { width: 100%; height: 100%; border-radius: 12px; overflow: hidden; }
+    .map-head { display:flex; gap:8px; align-items:center; justify-content: space-between; color: var(--muted); }
+    .map-controls { display:flex; gap:8px; align-items:center; }
+    .btn { background:#202635; color: var(--fg); border:0; border-radius:10px; padding:6px 10px; cursor:pointer; }
+    .btn[disabled]{ opacity:.6; cursor:default; }
+    .cal-controls { display:flex; gap:8px; justify-content:flex-end; align-items:center; }
+
+    @media (max-aspect-ratio: 10/16) {
+      .layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(4, auto);
+        grid-template-areas:
+          "weather"
+          "radar"
+          "clock"
+          "calendar";
+        overflow:auto;
+      }
+      .clock-wrap{align-items:flex-start;}
+    }
+    .bar { fill: #69b3ff; }
+    .bar-label { font-size: 12px; fill: var(--muted); }
+    .bar-axis { stroke: rgba(255,255,255,.15); stroke-width:1; }
+  </style>
+</head>
+<body>
+  <div id="lastUpdated">最終更新: --</div>
+  <div class="layout">
+    <!-- Panel: Weather -->
+    <section class="card panel panel--weather" data-panel-name="weather" data-panel-src="panels/weather.html"></section>
+
+    <!-- Panel: Radar -->
+    <section class="card panel panel--radar" data-panel-name="radar" data-panel-src="panels/radar.html"></section>
+
+    <!-- Panel: Clock -->
+    <section class="card panel panel--clock" data-panel-name="clock" data-panel-src="panels/clock.html"></section>
+
+    <!-- Panel: Calendar -->
+    <section class="card panel panel--calendar" data-panel-name="calendar" data-panel-src="panels/calendar.html"></section>
+  </div>
+
+<script>
+async function loadPanels(){
+  const sections = Array.from(document.querySelectorAll('[data-panel-src]'));
+  await Promise.all(sections.map(async (section) => {
+    const src = section.getAttribute('data-panel-src');
+    if(!src) return;
+    try{
+      const res = await fetch(src, { cache: 'no-store' });
+      if(!res.ok){
+        throw new Error(`Failed to load ${src} (${res.status})`);
+      }
+      const html = await res.text();
+      section.innerHTML = html;
+    }catch(err){
+      const name = section.getAttribute('data-panel-name') || 'Panel';
+      section.innerHTML = `<div class="title">${name} 読み込み失敗</div>`;
+      console.error('Panel load error:', err);
+    }
+  }));
+}
+
+async function bootstrap(){
+  await loadPanels();
+  await initializeDashboard();
+}
+
+bootstrap();
+
+async function initializeDashboard(){
+/******** CONFIG ********/
+const CONFIG = {
+  lat: 35.6762,
+  lon: 139.6503,
+  timezone: 'Asia/Tokyo',
+  weatherRefresh: 10 * 60 * 1000,
+  radarRefresh:   10 * 60 * 1000,
+  chartHours: 24,
+  chartPadding: 6,
+  historyHours: 24,
+  historyStepHours: 1,
+  historyShiftHours: 24
+};
+
+/******** LOCATION DETECTION ********/
+async function ensureInitialLocation(){
+  const fallback = { lat: CONFIG.lat, lon: CONFIG.lon, timezone: CONFIG.timezone };
+  if(typeof navigator === 'undefined' || !navigator.geolocation){
+    return;
+  }
+  const coords = await new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if(pos && pos.coords){
+          resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        }else{
+          resolve(null);
+        }
+      },
+      (err) => {
+        console.warn('Geolocation unavailable, using config defaults.', err);
+        resolve(null);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 5 * 60 * 1000 }
+    );
+  });
+  if(coords){
+    CONFIG.lat = coords.lat;
+    CONFIG.lon = coords.lon;
+    const tz = (typeof Intl !== 'undefined' && typeof Intl.DateTimeFormat === 'function')
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : null;
+    CONFIG.timezone = tz || fallback.timezone;
+  }else{
+    CONFIG.lat = fallback.lat;
+    CONFIG.lon = fallback.lon;
+    CONFIG.timezone = fallback.timezone;
+  }
+}
+await ensureInitialLocation();
+
+/******** CLOCK ********/
+const WEEKDAYS_JA_FULL = ["日曜日","月曜日","火曜日","水曜日","木曜日","金曜日","土曜日"];
+const dowEl = document.getElementById('dow');
+const ampmEl = document.getElementById('ampm');
+const clockEl = document.getElementById('clock');
+const dateEl  = document.getElementById('date');
+const pad = (n) => String(n).padStart(2,'0');
+
+function updateClock(){
+  const d = new Date();
+  const h = d.getHours();
+  dowEl.textContent = WEEKDAYS_JA_FULL[d.getDay()];
+  ampmEl.textContent = h < 12 ? '午前' : '午後';
+  clockEl.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  dateEl.textContent = `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
+}
+setInterval(updateClock, 1000); updateClock();
+
+/******** CALENDAR (2 months with JP holidays) ********/
+const cal3El = document.getElementById('cal3');
+const calPrevBtn = document.getElementById('calPrev');
+const calNextBtn = document.getElementById('calNext');
+const calTodayBtn = document.getElementById('calToday');
+let holidayCache = {}; // per year
+let calOffset = 0;
+function ymd(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+async function loadHolidays(year){
+  if(holidayCache[year]) return holidayCache[year];
+  try{
+    const res = await fetch(`https://holidays-jp.github.io/api/v1/${year}/date.json`, {cache:'no-store'});
+    const json = res.ok ? await res.json() : {};
+    holidayCache[year] = json; return json;
+  }catch{ holidayCache[year] = {}; return {}; }
+}
+
+async function renderTwoMonths(base){
+  if(!cal3El) return;
+  cal3El.innerHTML = '';
+  const months = [new Date(base.getFullYear(), base.getMonth(), 1), new Date(base.getFullYear(), base.getMonth()+1, 1)];
+  const years = [...new Set(months.map(d=>d.getFullYear()))];
+  const holiByYear = {};
+  await Promise.all(years.map(async y=>{ holiByYear[y] = await loadHolidays(y); }));
+  const todayStr = ymd(new Date());
+
+  for(const mdate of months){
+    const y = mdate.getFullYear(); const m = mdate.getMonth();
+    const first = new Date(y, m, 1); const last = new Date(y, m+1, 0);
+    const box = document.createElement('div'); box.className = 'mcal';
+    const head = document.createElement('div'); head.className='mh'; head.textContent = `${y}年 ${m+1}月`;
+    const grid = document.createElement('div'); grid.className='grid7';
+    // weekdays header
+    ;['日','月','火','水','木','金','土'].forEach(w=>{ const wd=document.createElement('div'); wd.className='wd'; wd.textContent=w; grid.appendChild(wd); });
+    // blanks
+    for(let i=0;i<first.getDay();i++){ const b=document.createElement('div'); b.className='d'; grid.appendChild(b); }
+    // days
+    for(let d=1; d<=last.getDate(); d++){
+      const cur = new Date(y, m, d); const el = document.createElement('div'); el.className='d'; el.textContent=d;
+      const dow = cur.getDay(); const k = ymd(cur); const holidays = holiByYear[y] || {}; const isHoliday = Object.prototype.hasOwnProperty.call(holidays, k);
+      if(k===todayStr) el.classList.add('today');
+      if(dow===0) el.classList.add('sun');
+      if(dow===6) el.classList.add('sat');
+      if(isHoliday) { el.classList.add('holiday'); el.title = holidays[k]; }
+      grid.appendChild(el);
+    }
+    box.appendChild(head); box.appendChild(grid); cal3El.appendChild(box);
+  }
+}
+
+function getCalendarBaseMonth(){
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth() + calOffset, 1);
+}
+
+async function updateCalendar(){
+  await renderTwoMonths(getCalendarBaseMonth());
+}
+
+if(calPrevBtn){
+  calPrevBtn.addEventListener('click', ()=>{ calOffset -= 1; updateCalendar(); });
+}
+if(calNextBtn){
+  calNextBtn.addEventListener('click', ()=>{ calOffset += 1; updateCalendar(); });
+}
+if(calTodayBtn){
+  calTodayBtn.addEventListener('click', ()=>{ calOffset = 0; updateCalendar(); });
+}
+
+updateCalendar();
+
+/******** WEATHER (Open-Meteo) ********/
+const chartSvg = document.getElementById('tempChart');
+const rowForecast = document.getElementById('rowForecast');
+const precipSvg = document.getElementById('precipBar');
+const lastUpdatedEl = document.getElementById('lastUpdated');
+function formatDateTime(date){
+  return `${date.getFullYear()}/${pad(date.getMonth()+1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+function setLastUpdated(tsMs){
+  if(!lastUpdatedEl) return;
+  const date = new Date(tsMs);
+  if(Number.isNaN(date.getTime())){
+    lastUpdatedEl.textContent = '最終更新: --';
+    return;
+  }
+  lastUpdatedEl.textContent = `最終更新: ${formatDateTime(date)}`;
+}
+
+const WEATHER_CODE_MAP = {
+  0: '快晴',
+  1: '晴れ',
+  2: '薄い雲',
+  3: '曇り',
+  45: '霧',
+  48: '着氷霧',
+  51: '霧雨',
+  53: '細かな雨',
+  55: '霧雨 (強)',
+  56: '氷霧雨',
+  57: '氷霧雨 (強)',
+  61: '弱い雨',
+  63: '雨',
+  65: '強い雨',
+  66: '氷雨',
+  67: '氷雨 (強)',
+  71: '小雪',
+  73: '雪',
+  75: '大雪',
+  77: '雪あられ',
+  80: 'にわか雨',
+  81: 'にわか雨 (強)',
+  82: '激しいにわか雨',
+  85: 'にわか雪',
+  86: '激しいにわか雪',
+  95: '雷雨',
+  96: '雷雨 (雹)',
+  99: '雷雨 (大雹)'
+};
+
+function describeWeatherCode(code){
+  if(code == null) return '';
+  return WEATHER_CODE_MAP[code] || `コード ${code}`;
+}
+
+function parseHourlyEntries(meteo){
+  const times = Array.isArray(meteo?.hourly?.time) ? meteo.hourly.time : [];
+  const temps = Array.isArray(meteo?.hourly?.temperature_2m) ? meteo.hourly.temperature_2m : [];
+  const precip = Array.isArray(meteo?.hourly?.precipitation) ? meteo.hourly.precipitation : [];
+  const pop = Array.isArray(meteo?.hourly?.precipitation_probability) ? meteo.hourly.precipitation_probability : [];
+  const codes = Array.isArray(meteo?.hourly?.weathercode) ? meteo.hourly.weathercode : [];
+  const entries = [];
+  for(let i=0; i<times.length; i++){
+    const timeStr = times[i];
+    const date = new Date(timeStr);
+    if(!Number.isFinite(date.getTime())) continue;
+    const temp = temps[i];
+    if(typeof temp !== 'number') continue;
+    entries.push({
+      time: date,
+      temp,
+      precipitation: typeof precip[i] === 'number' ? precip[i] : 0,
+      pop: typeof pop[i] === 'number' ? pop[i] : null,
+      weathercode: typeof codes[i] === 'number' ? codes[i] : null
+    });
+  }
+  return entries.sort((a,b)=>a.time.getTime() - b.time.getTime());
+}
+
+function splitHourly(entries, nowDate){
+  const historyMs = Math.max(1, CONFIG.historyHours || 24) * 3600 * 1000;
+  const horizonMs = Math.max(1, CONFIG.chartHours || 24) * 3600 * 1000;
+  const nowMs = nowDate.getTime();
+  const past = entries.filter(e => e.time.getTime() < nowMs && nowMs - e.time.getTime() <= historyMs);
+  const future = entries.filter(e => e.time.getTime() >= nowMs && e.time.getTime() - nowMs <= horizonMs);
+  return { past, future };
+}
+
+async function fetchWeather(){
+  const params = new URLSearchParams({
+    latitude: String(CONFIG.lat),
+    longitude: String(CONFIG.lon),
+    timezone: CONFIG.timezone || 'auto',
+    hourly: 'temperature_2m,precipitation,precipitation_probability,weathercode',
+    past_days: '1',
+    forecast_days: '2',
+    current_weather: 'true'
+  });
+  const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+  try{
+    const res = await fetch(url, { cache: 'no-store' });
+    if(!res.ok){
+      throw new Error(`Open-Meteo error ${res.status}`);
+    }
+    const meteo = await res.json();
+    const currentTime = meteo?.current_weather?.time ? new Date(meteo.current_weather.time) : new Date();
+    const nowDate = Number.isNaN(currentTime.getTime()) ? new Date() : currentTime;
+    const nowUnix = Math.floor(nowDate.getTime() / 1000);
+    const entries = parseHourlyEntries(meteo);
+    const { past, future } = splitHourly(entries, nowDate);
+    const historicalPoints = past.map(entry => ({ dt: Math.floor(entry.time.getTime() / 1000), temp: entry.temp }));
+    const futureWindow = future.length ? future : entries.filter(e => e.time.getTime() >= nowDate.getTime()).slice(0, Math.max(1, CONFIG.chartHours || 24));
+
+    renderWeatherFromMeteo({
+      meteo,
+      nowDate,
+      nowUnix,
+      futureWindow,
+      historicalPoints
+    });
+    renderPrecipFromMeteo(entries, nowDate);
+
+    const updatedTimestamp = meteo?.current_weather?.time ? new Date(meteo.current_weather.time).getTime() : Date.now();
+    setLastUpdated(updatedTimestamp);
+  }catch(err){
+    console.error('Weather fetch failed:', err);
+    chartSvg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="label">${err.message || 'Failed to fetch weather data'}</text>`;
+    rowForecast.innerHTML = '';
+    drawPrecipBars([]);
+  }
+}
+
+function renderWeatherFromMeteo({ meteo, nowDate, nowUnix, futureWindow, historicalPoints }){
+  const step = Math.max(1, CONFIG.historyStepHours || 3);
+  const currentTemp = typeof meteo?.current_weather?.temperature === 'number' ? meteo.current_weather.temperature : (futureWindow[0]?.temp ?? null);
+  const currentCode = typeof meteo?.current_weather?.weathercode === 'number' ? meteo.current_weather.weathercode : futureWindow[0]?.weathercode ?? null;
+
+  const futureSeriesSeed = [];
+  if(currentTemp != null){
+    futureSeriesSeed.push({ t: nowDate, label: `${pad(nowDate.getHours())}:00`, temp: currentTemp, isCurrent: true, weathercode: currentCode });
+  }
+
+  const sampledForecast = futureWindow
+    .filter((_, idx) => idx % step === 0)
+    .map(entry => ({ t: entry.time, label: `${pad(entry.time.getHours())}:00`, temp: entry.temp, weathercode: entry.weathercode }));
+
+  const futureSeries = [...futureSeriesSeed, ...sampledForecast];
+  const overlayTimeline = [nowDate, ...futureWindow.map(p => p.time)];
+  const pastSeries = buildPastSeries(historicalPoints, nowUnix, currentTemp, nowDate, overlayTimeline);
+  drawTempChart(futureSeries, pastSeries);
+
+  const rowItems = futureWindow
+    .filter((_, idx) => idx % 3 === 0)
+    .slice(0, 8)
+    .map(entry => ({
+      label: `${pad(entry.time.getHours())}:00`,
+      temp: entry.temp,
+      description: describeWeatherCode(entry.weathercode),
+      pop: entry.pop == null ? null : entry.pop / 100
+    }));
+  renderRowForecast(rowItems);
+}
+
+function buildPastSeries(historicalPoints, nowUnix, currentTemp, nowDate, forecastTimes){
+  if(!Array.isArray(historicalPoints) || !historicalPoints.length) return [];
+  const dayAgo = nowUnix - (CONFIG.historyHours || 24) * 3600;
+  const shiftHours = Number.isFinite(CONFIG.historyShiftHours) ? CONFIG.historyShiftHours : (CONFIG.historyHours || 24);
+  const shiftSeconds = Math.max(0, shiftHours) * 3600;
+  const range = (() => {
+    if(!Array.isArray(forecastTimes) || !forecastTimes.length) return null;
+    const times = forecastTimes
+      .map(t => (t instanceof Date ? t.getTime() : (typeof t === 'number' ? t : new Date(t).getTime())))
+      .filter(time => Number.isFinite(time));
+    if(!times.length) return null;
+    return { start: Math.min(...times), end: Math.max(...times) };
+  })();
+  const withinRange = (timeMs) => !range || (timeMs >= range.start && timeMs <= range.end);
+  const byDt = new Map();
+  for(const entry of historicalPoints){
+    const dt = typeof entry?.dt === 'number' ? entry.dt : (entry?.t instanceof Date ? Math.floor(entry.t.getTime() / 1000) : NaN);
+    const temp = typeof entry?.temp === 'number' ? entry.temp : (typeof entry?.temperature === 'number' ? entry.temperature : null);
+    if(!Number.isFinite(dt) || !Number.isFinite(temp)) continue;
+    if(dt < dayAgo || dt > nowUnix) continue;
+    byDt.set(dt, { dt, temp });
+  }
+  if(!byDt.size) return [];
+  const sorted = Array.from(byDt.values()).sort((a,b)=>a.dt - b.dt);
+  let series = sorted.map(point => {
+    const originalDate = new Date(point.dt * 1000);
+    // Shift past timestamps forward so the dashed line overlays the forecast timeline.
+    const shiftedDate = new Date((point.dt + shiftSeconds) * 1000);
+    return {
+      t: shiftedDate,
+      originalDate,
+      temp: point.temp,
+      label: `${pad(originalDate.getHours())}:00`
+    };
+  }).filter(entry => withinRange(entry.t instanceof Date ? entry.t.getTime() : new Date(entry.t).getTime()));
+
+  const shiftedNowTime = nowDate.getTime() + shiftSeconds * 1000;
+
+  if(currentTemp != null && withinRange(shiftedNowTime)){
+    let currentIdx = -1;
+    for(let i = 0; i < series.length; i++){
+      const comparedDate = series[i].originalDate instanceof Date ? series[i].originalDate : series[i].t;
+      if(Math.abs(comparedDate.getTime() - nowDate.getTime()) < 45 * 60 * 1000){
+        currentIdx = i; break;
+      }
+    }
+    if(currentIdx >= 0){
+      series[currentIdx] = { ...series[currentIdx], isCurrent: true };
+    }else{
+      const shiftedNow = new Date(nowDate.getTime() + shiftSeconds * 1000);
+      series.push({ t: shiftedNow, originalDate: nowDate, temp: currentTemp, label: `${pad(nowDate.getHours())}:00`, isCurrent: true });
+      series.sort((a,b)=>a.t.getTime() - b.t.getTime());
+    }
+  }
+  return series;
+}
+
+function renderPrecipFromMeteo(entries, nowDate){
+  const future = entries.filter(e => e.time.getTime() >= nowDate.getTime()).slice(0, 12);
+  const data = future.map(entry => ({
+    label: `${pad(entry.time.getHours())}:00`,
+    value: entry.precipitation,
+    pop: entry.pop == null ? null : entry.pop / 100
+  }));
+  drawPrecipBars(data);
+}
+
+function renderRowForecast(items){
+  if(!rowForecast) return;
+  if(!Array.isArray(items) || !items.length){
+    rowForecast.innerHTML = '<div class="f">予報データがありません</div>';
+    return;
+  }
+  rowForecast.innerHTML = items.map(item => {
+    const popText = typeof item.pop === 'number' ? `<div>${Math.round(item.pop * 100)}% 雨確率</div>` : '';
+    return `<div class="f"><div class="tm">${item.label}</div><div>${Math.round(item.temp)}°C</div><div>${item.description || ''}</div>${popText}</div>`;
+  }).join('');
+}
+
+function drawTempChart(futureSeries, pastSeries){
+  if(!chartSvg) return;
+  const future = Array.isArray(futureSeries) ? futureSeries.filter(s => s && typeof s.temp === 'number' && s.t) : [];
+  const past = Array.isArray(pastSeries) ? pastSeries.filter(s => s && typeof s.temp === 'number' && s.t) : [];
+  const combined = [...past, ...future];
+  if(!combined.length){
+    chartSvg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="label">気温データがありません</text>`;
+    return;
+  }
+
+  const width = 800;
+  const height = 260;
+  const margin = { top: 24, right: 24, bottom: 52, left: 60 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+
+  const temps = combined.map(s => s.temp);
+  const scale = buildTemperatureScale(temps);
+  const times = combined.map(s => (s.t instanceof Date ? s.t.getTime() : new Date(s.t).getTime()));
+  const minTime = Math.min(...times);
+  const maxTime = Math.max(...times);
+  const timeRange = maxTime - minTime || 1;
+
+  const toPoint = (entry) => {
+    const date = entry.t instanceof Date ? entry.t : new Date(entry.t);
+    const time = date.getTime();
+    const ratioX = (time - minTime) / timeRange;
+    const ratioY = (entry.temp - scale.min) / (scale.max - scale.min || 1);
+    return {
+      ...entry,
+      date,
+      x: margin.left + ratioX * innerWidth,
+      y: margin.top + (1 - ratioY) * innerHeight
+    };
+  };
+
+  const pastPoints = past.slice().sort((a,b)=>new Date(a.t).getTime() - new Date(b.t).getTime()).map(toPoint);
+  const futurePoints = future.slice().sort((a,b)=>new Date(a.t).getTime() - new Date(b.t).getTime()).map(toPoint);
+
+  const pastPath = buildPathD(pastPoints);
+  const futurePath = buildPathD(futurePoints);
+
+  const nowPoint = [...futurePoints, ...pastPoints].find(p => p.isCurrent);
+  const nowMarkup = nowPoint ? `<line class="axis axis-now" x1="${nowPoint.x}" y1="${margin.top}" x2="${nowPoint.x}" y2="${height - margin.bottom}"></line><text class="label" x="${nowPoint.x}" y="${margin.top - 6}" text-anchor="middle">現在</text>` : '';
+
+  const tempGrid = scale.ticks.map(temp => {
+    const ratio = (temp - scale.min) / (scale.max - scale.min || 1);
+    const y = margin.top + (1 - ratio) * innerHeight;
+    return `
+      <line class="axis" x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke-dasharray="4 4"></line>
+      <text class="label" x="${margin.left - 10}" y="${y + 4}" text-anchor="end">${temp.toFixed(0)}°C</text>
+    `;
+  }).join('');
+
+  const timeTicks = buildTimeTicks(minTime, maxTime, innerWidth, margin.left, margin.bottom, height);
+
+  const futureDotMarkup = futurePoints.map(p => `<circle class="dot" cx="${p.x}" cy="${p.y}" r="4"></circle>`).join('');
+  const pastDotMarkup = pastPoints.map(p => `<circle class="dot dot-past" cx="${p.x}" cy="${p.y}" r="3"></circle>`).join('');
+  const futureLabelMarkup = futurePoints.map(p => `<text class="label" x="${p.x}" y="${p.y - 8}" text-anchor="middle">${Math.round(p.temp)}°</text>`).join('');
+
+  chartSvg.innerHTML = `
+    ${tempGrid}
+    ${timeTicks}
+    ${pastPath ? `<path class="line line-past" d="${pastPath}"></path>` : ''}
+    ${futurePath ? `<path class="line line-future" d="${futurePath}"></path>` : ''}
+    ${nowMarkup}
+    ${pastDotMarkup}
+    ${futureDotMarkup}
+    ${futureLabelMarkup}
+    <line class="axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
+    <line class="axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
+  `;
+}
+
+function buildPathD(points){
+  if(!points.length) return '';
+  return points.reduce((acc, p, idx) => acc + `${idx ? 'L' : 'M'}${p.x},${p.y}`, '');
+}
+
+function buildTemperatureScale(values){
+  const STEP = 2;
+  const MIN_SPAN = 16;
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  let lower = Math.floor(minVal / STEP) * STEP;
+  let upper = Math.ceil(maxVal / STEP) * STEP;
+  if(upper - lower < MIN_SPAN){
+    const needed = MIN_SPAN - (upper - lower);
+    const padding = Math.ceil(needed / (2 * STEP)) * STEP;
+    lower -= padding;
+    upper += padding;
+  }
+  if(minVal < lower){
+    lower -= STEP * Math.ceil((lower - minVal) / STEP);
+  }
+  if(maxVal > upper){
+    upper += STEP * Math.ceil((maxVal - upper) / STEP);
+  }
+  if(upper - lower < MIN_SPAN){
+    upper = lower + Math.ceil(MIN_SPAN / STEP) * STEP;
+  }
+  const ticks = [];
+  for(let t = lower; t <= upper; t += STEP){
+    ticks.push(t);
+  }
+  return { min: lower, max: upper, ticks };
+}
+
+function buildTimeTicks(minTime, maxTime, innerWidth, offsetLeft, offsetBottom, totalHeight){
+  const range = maxTime - minTime || 1;
+  const tickCount = Math.max(4, Math.min(8, Math.floor(innerWidth / 120)));
+  const parts = [];
+  for(let i=0; i<=tickCount; i++){
+    const ratio = i / tickCount;
+    const time = minTime + ratio * range;
+    const x = offsetLeft + ratio * innerWidth;
+    const label = formatTickLabel(new Date(time));
+    parts.push(`
+      <line class="axis" x1="${x}" y1="${totalHeight - offsetBottom}" x2="${x}" y2="${totalHeight - offsetBottom + 6}"></line>
+      <text class="label" x="${x}" y="${totalHeight - offsetBottom + 22}" text-anchor="middle">${label}</text>
+    `);
+  }
+  return parts.join('');
+}
+
+function formatTickLabel(date){
+  const hh = pad(date.getHours());
+  const day = `${pad(date.getMonth()+1)}/${pad(date.getDate())}`;
+  return `${day} ${hh}:00`;
+}
+
+function drawPrecipBars(data){
+  if(!precipSvg) return;
+  if(!Array.isArray(data) || !data.length){
+    precipSvg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="label">降水データがありません</text>`;
+    return;
+  }
+  const width = 800;
+  const height = 200;
+  const margin = { top: 16, right: 24, bottom: 40, left: 48 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const maxValue = Math.max(...data.map(d => d.value), 0.1);
+  const barWidth = innerWidth / data.length;
+
+  precipSvg.innerHTML = `
+    <line class="bar-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
+    <line class="bar-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
+    ${data.map((d, i) => {
+      const x = margin.left + i * barWidth + barWidth * 0.1;
+      const barH = d.value <= 0 ? 0 : (d.value / maxValue) * innerHeight;
+      const y = height - margin.bottom - barH;
+      const popText = typeof d.pop === 'number' ? `<text class="label" x="${x + barWidth * 0.4}" y="${y - 8}" text-anchor="middle">${Math.round(d.pop * 100)}%</text>` : '';
+      return `
+        <rect class="bar" x="${x}" y="${y}" width="${barWidth * 0.8}" height="${barH}"></rect>
+        ${barH ? `<text class="label" x="${x + barWidth * 0.4}" y="${y - 20}" text-anchor="middle">${d.value.toFixed(1)}mm</text>` : ''}
+        ${popText}
+        <text class="bar-label" x="${x + barWidth * 0.4}" y="${height - margin.bottom + 20}" text-anchor="middle">${d.label}</text>
+      `;
+    }).join('')}
+  `;
+}
+
+fetchWeather(); setInterval(fetchWeather, CONFIG.weatherRefresh);
+
+/******** RADAR (RainViewer tiles) ********/
+let map, radarLayer, radarTimes = [], radarIndex = 0;
+const radarTimeEl = document.getElementById('radarTime');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+
+function initMap(){
+  map = L.map('map', { zoomControl: false, attributionControl: false });
+  map.setView([CONFIG.lat, CONFIG.lon], 7);
+  // base OSM
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 7 }).addTo(map);
+}
+async function loadRadarTimes(){
+  try {
+    const res = await fetch('https://tilecache.rainviewer.com/api/maps.json', { cache: 'no-store' });
+    radarTimes = await res.json(); radarIndex = radarTimes.length - 1;
+  } catch(e){ radarTimes = []; radarIndex = 0; }
+}
+function setRadarLayer(){
+  if(!radarTimes.length){ radarTimeEl.textContent='Radar unavailable'; return; }
+  const ts = radarTimes[radarIndex];
+  const url = `https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/1/1_1.png`;
+  if(radarLayer) map.removeLayer(radarLayer);
+  radarLayer = L.tileLayer(url, { opacity: 0.7 }); radarLayer.addTo(map);
+  const t = new Date(ts * 1000);
+  radarTimeEl.textContent = `${pad(t.getHours())}:${pad(t.getMinutes())}`;
+}
+btnPrev.addEventListener('click', ()=>{ if(!radarTimes.length) return; radarIndex = Math.max(0, radarIndex-1); setRadarLayer(); });
+btnNext.addEventListener('click', ()=>{ if(!radarTimes.length) return; radarIndex = Math.min(radarTimes.length-1, radarIndex+1); setRadarLayer(); });
+async function refreshRadar(){ await loadRadarTimes(); setRadarLayer(); }
+initMap();
+refreshRadar(); setInterval(refreshRadar, CONFIG.radarRefresh);
+
+/******** KIOSK niceties ********/
+(function autoHideCursor(){
+  let t; const root = document.documentElement; let hidden=false;
+  function show(){ if(hidden){ root.style.cursor=''; hidden=false; } }
+  function hide(){ root.style.cursor='none'; hidden=true; }
+  window.addEventListener('mousemove', ()=>{ show(); clearTimeout(t); t=setTimeout(hide, 3000); }, {passive:true});
+  t=setTimeout(hide, 3000);
+})();
+}
+</script>
+</body>
+</html>
