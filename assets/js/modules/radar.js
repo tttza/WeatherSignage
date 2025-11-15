@@ -10,15 +10,38 @@ export const initRadar = (config) => {
   const radarTimeEl = document.getElementById("radarTime");
   const btnPrev = document.getElementById("btnPrev");
   const btnNext = document.getElementById("btnNext");
+  const btnCurrentLocation = document.getElementById("btnCurrentLocation");
 
   if (!mapEl || typeof L === "undefined") {
     return;
   }
 
+  const defaultLat = config?.lat ?? 35.6762;
+  const defaultLon = config?.lon ?? 139.6503;
+  const defaultZoom = config?.radarZoom ?? 7;
+  let homeView = { lat: defaultLat, lon: defaultLon, zoom: defaultZoom };
+
   const initMap = () => {
     map = L.map("map", { zoomControl: false, attributionControl: false });
-    map.setView([config?.lat ?? 35.6762, config?.lon ?? 139.6503], 7);
+    homeView = {
+      lat: config?.lat ?? defaultLat,
+      lon: config?.lon ?? defaultLon,
+      zoom: config?.radarZoom ?? defaultZoom,
+    };
+    map.setView([homeView.lat, homeView.lon], homeView.zoom);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 7 }).addTo(map);
+  };
+
+  const recenterToHome = () => {
+    if (!map || !homeView) {
+      return;
+    }
+    const target = [homeView.lat, homeView.lon];
+    if (typeof map.flyTo === "function") {
+      map.flyTo(target, homeView.zoom, { duration: 0.65 });
+    } else {
+      map.setView(target, homeView.zoom);
+    }
   };
 
   const setRadarLayer = () => {
@@ -73,6 +96,8 @@ export const initRadar = (config) => {
     radarIndex = Math.min(radarTimes.length - 1, radarIndex + 1);
     setRadarLayer();
   });
+
+  btnCurrentLocation?.addEventListener("click", recenterToHome);
 
   initMap();
   refreshRadar();

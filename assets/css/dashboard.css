@@ -364,6 +364,18 @@ body {
   border-radius: 12px;
   overflow: hidden;
 }
+.map-current-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: rgba(32, 38, 53, .9);
+  border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+  white-space: nowrap;
+}
+.map-current-btn:focus-visible {
+  outline: 2px solid rgba(62, 166, 255, .8);
+  outline-offset: 2px;
+}
 .map-head {
   display: flex;
   gap: 8px;
