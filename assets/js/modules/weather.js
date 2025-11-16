@@ -396,6 +396,25 @@ const buildTemperatureScale = (values) => {
   return { min: lower, max: upper, ticks };
 };
 
+const DEFAULT_CHART_SIZE = { width: 800, height: 260 };
+
+const getSvgDimensions = (svgEl) => {
+  if (!svgEl) {
+    return { ...DEFAULT_CHART_SIZE };
+  }
+  const rect = svgEl.getBoundingClientRect();
+  const width = Math.round(rect.width);
+  const height = Math.round(rect.height);
+  if (width > 0 && height > 0) {
+    return { width, height };
+  }
+  const viewBox = svgEl.viewBox?.baseVal;
+  if (viewBox?.width > 0 && viewBox?.height > 0) {
+    return { width: viewBox.width, height: viewBox.height };
+  }
+  return { ...DEFAULT_CHART_SIZE };
+};
+
 const buildTimeTicks = (minTime, maxTime, innerWidth, offsetLeft, offsetBottom, totalHeight) => {
   const range = maxTime - minTime || 1;
   const tickCount = Math.max(4, Math.min(8, Math.floor(innerWidth / 120)));
@@ -431,8 +450,8 @@ const drawTempChart = (chartSvg, futureSeries, pastSeries) => {
     return;
   }
 
-  const width = 800;
-  const height = 260;
+  const { width, height } = getSvgDimensions(chartSvg);
+  chartSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   const margin = { top: 24, right: 24, bottom: 52, left: 60 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
@@ -614,6 +633,8 @@ export const initWeather = (config) => {
   const precipogramSvg = document.getElementById("precipogram");
   const lastUpdatedEl = document.getElementById("weatherLastUpdated");
   const currentTempEl = document.getElementById("currentTempDisplay");
+  let latestChartData = null;
+  let chartResizeObserver = null;
 
   if (!chartSvg || !rowForecast || !precipogramSvg) {
     return;
@@ -651,6 +672,24 @@ export const initWeather = (config) => {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   };
 
+  const rerenderTempChart = () => {
+    if (!latestChartData) {
+      return;
+    }
+    drawTempChart(chartSvg, latestChartData.future, latestChartData.past);
+  };
+
+  if (typeof window !== "undefined") {
+    if ("ResizeObserver" in window) {
+      chartResizeObserver = new ResizeObserver(() => {
+        rerenderTempChart();
+      });
+      chartResizeObserver.observe(chartSvg);
+    } else {
+      window.addEventListener("resize", rerenderTempChart);
+    }
+  }
+
   const renderWeatherFromMeteo = ({ meteo, nowDate, nowUnix, futureWindow, historicalPoints, moonPhaseLookup }) => {
     const step = Math.max(1, getSetting("historyStepHours", 3));
     const currentTemp =
@@ -686,6 +725,7 @@ export const initWeather = (config) => {
     const futureSeries = [...futureSeriesSeed, ...sampledForecast];
     const overlayTimeline = [nowDate, ...futureWindow.map((p) => p.time)];
     const pastSeries = buildPastSeries(historicalPoints, nowUnix, currentTemp, nowDate, overlayTimeline, config);
+    latestChartData = { future: futureSeries, past: pastSeries };
     drawTempChart(chartSvg, futureSeries, pastSeries);
 
     const rowItems = futureWindow
