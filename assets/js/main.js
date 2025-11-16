@@ -7,6 +7,22 @@ import { initWeather } from "./modules/weather.js";
 import { initRadar } from "./modules/radar.js";
 import { enableKioskIdleCursor } from "./modules/kiosk.js";
 
+const registerServiceWorker = () => {
+  const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  const isSecureContext = window.location.protocol === "https:" || isLocalhost;
+
+  if (!("serviceWorker" in navigator) || !isSecureContext) {
+    return;
+  }
+
+  const serviceWorkerUrl = new URL("../../sw.js", import.meta.url);
+  navigator.serviceWorker
+    .register(serviceWorkerUrl)
+    .catch((error) => {
+      console.error("Service worker registration failed", error);
+    });
+};
+
 const bootstrap = async () => {
   await loadPanels();
   const config = getConfig();
@@ -16,6 +32,7 @@ const bootstrap = async () => {
   initWeather(config);
   initRadar(config);
   enableKioskIdleCursor();
+  registerServiceWorker();
 };
 
 bootstrap().catch((error) => {

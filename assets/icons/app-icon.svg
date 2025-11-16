@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="clock" x1="24%" y1="18%" x2="82%" y2="82%">
+      <stop offset="0%" stop-color="#3ea6ff" />
+      <stop offset="100%" stop-color="#7ab8ff" />
+    </linearGradient>
+    <linearGradient id="horizon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f2f4f9" />
+      <stop offset="100%" stop-color="#c9d1e3" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0f1115" />
+  <circle cx="34" cy="24" r="15" fill="url(#clock)" />
+  <circle cx="34" cy="24" r="11" fill="#101520" opacity=".18" />
+  <path d="M34 15v8l6 3" fill="none" stroke="#f5f6f9" stroke-width="3" stroke-linecap="round" />
+  <circle cx="34" cy="24" r="2" fill="#f5f6f9" />
+  <path d="M14 40.5a10.5 10.5 0 0 1 10-7.5 14.5 14.5 0 0 1 26.5 8.8A9 9 0 0 1 56 50c0 4.9-4 9-9 9H22a11 11 0 0 1-11-11c0-3.1 1.3-5.9 3-7.5Z" fill="url(#horizon)" />
+  <path d="M21 45c0 1.7 1.4 3 3 3s3-1.3 3-3-1.4-5-3-5-3 3.3-3 5Zm8-1c0 1.6 1.3 3 3 3s3-1.4 3-3-1.3-5-3-5-3 3.4-3 5Zm8 1c0 1.7 1.3 3 3 3s3-1.3 3-3-1.3-5-3-5-3 3.3-3 5Z" fill="#3ea6ff" />
+</svg>

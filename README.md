@@ -31,6 +31,13 @@ npx serve -l 8000
 
 Then visit `http://localhost:8000/` in your browser.
 
+## Install As A PWA
+
+- Serve the project over `https://` or `http://localhost` so the service worker can run.
+- Open the dashboard in a Chromium-based browser and wait for the panels to finish loading.
+- Use the browser's install button (Chrome: address bar icon or *⋮ > Install Simple Dashboard*) to add it to your device.
+- After installing, the dashboard runs fullscreen with cached assets so the latest data is available even if the network drops.
+
 ## Credits
 
 - [Leaflet 1.9.4](https://leafletjs.com/) — BSD 2-Clause license.
