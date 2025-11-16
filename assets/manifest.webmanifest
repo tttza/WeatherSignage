@@ -1,6 +1,6 @@
 {
-  "name": "Simple Dashboard",
-  "short_name": "Dashboard",
+  "name": "Weather Signage",
+  "short_name": "Signage",
   "start_url": "./?source=pwa",
   "scope": "./",
   "display": "fullscreen",
